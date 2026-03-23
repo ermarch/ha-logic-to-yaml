@@ -61,7 +61,16 @@ def parse_condition(node):
     elif isinstance(node, ast.Name):
         prefix = "binary_sensor" if "_" in node.id else "input_boolean"
         return {"condition": "state", "entity_id": f"{prefix}.{node.id}", "state": "on"}
-    
+
+    # Handle time(before="20:00:00", after="08:00:00")
+    elif isinstance(node, ast.Call) and node.func.id == "time":
+        time_cond = {"condition": "time"}
+        for keyword in node.keywords:
+            if keyword.arg in ["before", "after"]:
+                # Ensure the time is wrapped in quotes for HA YAML
+                time_cond[keyword.arg] = str(keyword.value.value)
+        return time_cond
+
     return {"condition": "template", "value_template": "Check logic syntax"}
 
 def parse_action(node):
