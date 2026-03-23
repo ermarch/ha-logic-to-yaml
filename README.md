@@ -42,7 +42,7 @@ conditions:
     Clone the repository:
     Bash
 
-    git clone https://github.com/YOUR_USERNAME/ha-logic-compiler.git
+    git clone https://github.com/ermarch/ha-logic-compiler.git
     cd ha-logic-compiler
 
     Install dependencies:
@@ -65,15 +65,15 @@ This project is configured for Streamlit Community Cloud:
 
     Connect your repository.
 
-    Your compiler is now live at https://your-app-name.streamlit.app!
+    Your compiler is now live at https://https://ha-logic-compiler.streamlit.app/
 
 🗺️ Roadmap
 
-    [ ] Support for for: duration (e.g., temp > 25 for 5m)
+    [✓] Support for for: duration (e.g., temp > 25 for 5m)
 
     [ ] Integration with Home Assistant API to fetch real entity IDs
 
-    [ ] Support for choose: and if-then-else action blocks
+    [✓] Support for choose: and if-then-else action blocks
 
     [ ] Export directly to automations.yaml
 

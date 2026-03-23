@@ -2,43 +2,61 @@ import streamlit as st
 import ast
 import yaml
 
-def parse_logic(node):
-    # 1. Handle AND / OR
+import ast
+import yaml
+
+def parse_condition(node):
+    # (Same logic as before for boolean/numeric parsing)
     if isinstance(node, ast.BoolOp):
         op_map = {ast.And: "and", ast.Or: "or"}
-        return {
-            "condition": op_map[type(node.op)],
-            "conditions": [parse_logic(val) for val in node.values]
-        }
-    
-    # 2. Handle NOT
-    elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
-        return {"condition": "not", "conditions": [parse_logic(node.operand)]}
-    
-    # 3. Handle Comparisons (e.g., temp > 25)
+        return {"condition": op_map[type(node.op)], "conditions": [parse_condition(val) for val in node.values]}
     elif isinstance(node, ast.Compare):
         left = node.left.id if isinstance(node.left, ast.Name) else "unknown"
         ops = node.ops[0]
         threshold = node.comparators[0].value if isinstance(node.comparators[0], ast.Constant) else 0
-        
-        # Map Python operators to HA numeric_state keys
-        if isinstance(ops, ast.Gt):
-            return {"condition": "numeric_state", "entity_id": f"sensor.{left}", "above": threshold}
-        elif isinstance(ops, ast.Lt):
-            return {"condition": "numeric_state", "entity_id": f"sensor.{left}", "below": threshold}
-        elif isinstance(ops, ast.Eq):
-            return {"condition": "state", "entity_id": f"sensor.{left}", "state": threshold}
-
-    # 4. Handle Simple Boolean Names (e.g., is_home)
+        if isinstance(ops, ast.Gt): return {"condition": "numeric_state", "entity_id": f"sensor.{left}", "above": threshold}
+        if isinstance(ops, ast.Lt): return {"condition": "numeric_state", "entity_id": f"sensor.{left}", "below": threshold}
     elif isinstance(node, ast.Name):
         return {"condition": "state", "entity_id": f"binary_sensor.{node.id}", "state": "on"}
-    
-    return {"error": "Unsupported logic structure"}
+    return {"condition": "template", "value_template": "TODO"}
 
-# Test it out:
-#logic_input = "is_home and temperature > 22"
-#tree = ast.parse(logic_input, mode='eval')
-#print(yaml.dump(parse_logic(tree.body), sort_keys=False))
+def parse_action(node):
+    # Handle 'if' statements (if-then-else)
+    if isinstance(node, ast.If):
+        condition = parse_condition(node.test)
+        
+        # 'then' block
+        then_actions = [parse_action(a) for a in node.body]
+        
+        # 'else' or 'elif' block
+        if node.orelse:
+            # If the 'else' contains another 'if', it's a 'choose' or 'elif'
+            if isinstance(node.orelse[0], ast.If):
+                # This could be mapped to a HA 'choose' block
+                return {
+                    "choose": [
+                        {"conditions": [condition], "sequence": then_actions},
+                        # Recursively handle the next if (the elif)
+                        parse_action(node.orelse[0])
+                    ]
+                }
+            else:
+                # Standard if-then-else
+                else_actions = [parse_action(a) for a in node.orelse]
+                return {
+                    "if": [condition],
+                    "then": then_actions,
+                    "else": else_actions
+                }
+        
+        return {"if": [condition], "then": then_actions}
+
+    # Handle a simple function call (e.g., light.turn_on())
+    elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+        func_name = node.value.func.id if isinstance(node.value.func, ast.Name) else "service.call"
+        return {"service": func_name.replace("_", "."), "target": {"entity_id": "TODO"}}
+
+    return {"action": "manual_check_required"}
 
 st.title("HA Logic to YAML")
 user_input = st.text_input("Enter your logic (e.g., temp > 25 and is_home)", "is_home and temp > 25")
