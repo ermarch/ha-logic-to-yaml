@@ -1,82 +1,82 @@
-📝 HA-Logic-Compiler
+# 📝 HA-Logic-Compiler
 
-Turn Python-style logic into Home Assistant YAML automations instantly.
+**Stop fighting with YAML indentation. Write logic like a programmer, deploy like a pro.**
 
-Are you tired of nesting and and or conditions in Home Assistant YAML? This utility allows you to write natural programming logic and converts it into valid, indented HA-compliant YAML code.
-🚀 Features
+`HA-Logic-Compiler` is a Python-based utility that translates standard programming syntax (if-elif-else, boolean operators, and numeric comparisons) into valid **Home Assistant** automation code.
 
-    Boolean Mapping: Automatically converts and, or, and not into nested HA blocks.
+## 🚀 Key Features
 
-    Numeric Comparisons: Recognizes > and < to generate numeric_state conditions.
+* **Logic to YAML**: Converts `and`, `or`, and `not` into nested Home Assistant condition blocks.
+* **Action Support**: Translates Python `if-else` statements into HA `if-then` or `choose` actions.
+* **Duration Handling**: Use the `hold()` function to easily add `for:` durations (e.g., `5m`, `10s`).
+* **Numeric Parsing**: Automatically maps `>` and `<` to `numeric_state` with `above` and `below` keys.
+* **Smart Prefixing**: Intelligently guesses entity types (e.g., `temp` becomes `sensor.temp`).
 
-    Smart Entity Tagging: Automatically prefixes sensors (e.g., temp becomes sensor.temp).
+---
 
-    Streamlit Web Interface: A clean UI to paste logic and copy YAML.
+## 📖 Syntax Guide
 
-🛠️ How It Works
+| Feature | Python-Style Input | Generated HA YAML |
+| :--- | :--- | :--- |
+| **Boolean** | `is_home and is_night` | Nested `condition: and` |
+| **Numeric** | `temperature > 25` | `condition: numeric_state` |
+| **Duration** | `hold(temp > 25, "5m")` | Adds `for: 00:05:00` |
+| **If-Then** | `if light_on: switch_off` | `if: ... then: ...` |
+| **Complex** | `if hold(pantry_door, "2m"): notify` | `if: { cond: state, for: '00:02:00' } ...` |
 
-Input your logic in standard Python syntax:
-Python
+---
 
-is_home and (temperature > 22 or guest_mode)
+## 🛠️ Example Usage
 
-The compiler parses the Abstract Syntax Tree (AST) and generates:
-YAML
+**Input Script:**
+```python
+if is_home and hold(temperature > 25, "10m"):
+    fan_on
+else:
+    fan_off
+```
 
-condition: and
-conditions:
-  - condition: state
-    entity_id: binary_sensor.is_home
-    state: 'on'
-  - condition: or
+---
+
+**Generated YAML:**
+```yaml
+- if:
+  - condition: and
     conditions:
+      - condition: state
+        entity_id: binary_sensor.is_home
+        state: 'on'
       - condition: numeric_state
         entity_id: sensor.temperature
-        above: 22
-      - condition: state
-        entity_id: binary_sensor.guest_mode
-        state: 'on'
+        above: 25
+        for: '00:10:00'
+  then:
+    - service: fan.turn_on
+  else:
+    - service: fan.turn_off
+```
 
-💻 Installation & Local Usage
+## 🔗 Live converter
 
-    Clone the repository:
-    Bash
+[HA Logic to YAML](https://ha-logic-compiler.streamlit.app/)
 
-    git clone https://github.com/ermarch/ha-logic-compiler.git
-    cd ha-logic-compiler
+## 💻 Installation
+**1. Clone the repository:**
+```bash
+git clone [https://github.com/YOUR_USERNAME/ha-logic-compiler.git](https://github.com/YOUR_USERNAME/ha-logic-compiler.git)
+cd ha-logic-compiler
+```
 
-    Install dependencies:
-    Bash
+---
 
-    pip install -r requirements.txt
+**2. Install requirements:**
+```bash
+pip install -r requirements.txt
+```
 
-    Run the Streamlit app:
-    Bash
+---
 
-    streamlit run app.py
-
-🌐 Deploying to the Web
-
-This project is configured for Streamlit Community Cloud:
-
-    Push this code to your GitHub repository.
-
-    Visit share.streamlit.io.
-
-    Connect your repository.
-
-    Your compiler is now live at https://https://ha-logic-compiler.streamlit.app/
-
-🗺️ Roadmap
-
-    [✓] Support for for: duration (e.g., temp > 25 for 5m)
-
-    [ ] Integration with Home Assistant API to fetch real entity IDs
-
-    [✓] Support for choose: and if-then-else action blocks
-
-    [ ] Export directly to automations.yaml
-
-🤝 Contributing
-
-Feel free to open an issue or submit a pull request if you have ideas for better logic mapping or support for more Home Assistant platforms!
+**3. Run the Web UI:**
+```bash
+streamlit run app.py
+```
