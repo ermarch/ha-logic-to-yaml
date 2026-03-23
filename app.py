@@ -1,14 +1,15 @@
-import streamlit as st
 import ast
 import yaml
 import re
+import streamlit as st
+
+# --- CORE COMPILER LOGIC ---
 
 def parse_duration(duration_str):
     """Converts '5m' to 00:05:00 or '1h' to 01:00:00 for HA."""
     match = re.match(r"(\d+)([smh])", str(duration_str))
     if not match:
         return duration_str
-    
     value, unit = match.groups()
     if unit == 's': return f"00:00:{int(value):02d}"
     if unit == 'm': return f"00:{int(value):02d}:00"
@@ -16,44 +17,98 @@ def parse_duration(duration_str):
     return duration_str
 
 def parse_condition(node):
-    # ... (previous logic for BoolOp and UnaryOp) ...
-
-    # Handle Comparisons with optional duration: temp > 25
-    if isinstance(node, ast.Compare):
-        left = node.left.id if isinstance(node.left, ast.Name) else "unknown"
-        ops = node.ops[0]
-        threshold = node.comparators[0].value if isinstance(node.comparators[0], ast.Constant) else 0
-        
-        # Base condition
-        condition = {
-            "condition": "numeric_state",
-            "entity_id": f"sensor.{left}"
+    """Parses Python AST into Home Assistant Condition YAML."""
+    # Handle AND / OR
+    if isinstance(node, ast.BoolOp):
+        op_map = {ast.And: "and", ast.Or: "or"}
+        return {
+            "condition": op_map[type(node.op)],
+            "conditions": [parse_condition(val) for val in node.values]
         }
-        
-        if isinstance(ops, ast.Gt): condition["above"] = threshold
-        elif isinstance(ops, ast.Lt): condition["below"] = threshold
-        
-        # Check for duration metadata (Advanced: using a 'for_' naming convention)
-        # For simplicity in this UI, we look for 'temp_for_5m > 25' 
-        # or we can check if the user wrapped it in a function: 'hold(temp > 25, "5m")'
-        return condition
-
-    # NEW: Handle a 'hold' function for durations: hold(temp > 25, "5m")
+    
+    # Handle NOT
+    elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return {"condition": "not", "conditions": [parse_condition(node.operand)]}
+    
+    # Handle hold(condition, "5m")
     elif isinstance(node, ast.Call) and node.func.id == "hold":
         base_cond = parse_condition(node.args[0])
         duration_raw = node.args[1].value if isinstance(node.args[1], ast.Constant) else "0"
         base_cond["for"] = parse_duration(duration_raw)
         return base_cond
 
-    # ... (rest of the Name/State logic) ...
+    # Handle Comparisons (temp > 25)
+    elif isinstance(node, ast.Compare):
+        left = node.left.id if isinstance(node.left, ast.Name) else "unknown"
+        ops = node.ops[0]
+        threshold = node.comparators[0].value if isinstance(node.comparators[0], ast.Constant) else 0
+        
+        if isinstance(ops, (ast.Gt, ast.GtE)):
+            return {"condition": "numeric_state", "entity_id": f"sensor.{left}", "above": threshold}
+        elif isinstance(ops, (ast.Lt, ast.LtE)):
+            return {"condition": "numeric_state", "entity_id": f"sensor.{left}", "below": threshold}
+        elif isinstance(ops, ast.Eq):
+            return {"condition": "state", "entity_id": f"sensor.{left}", "state": threshold}
 
-st.title("HA Logic to YAML")
-user_input = st.text_input("Enter your logic (e.g., temp > 25 and is_home)", "is_home and temp > 25")
+    # Handle Simple Names (is_home)
+    elif isinstance(node, ast.Name):
+        prefix = "binary_sensor" if "_" in node.id else "input_boolean"
+        return {"condition": "state", "entity_id": f"{prefix}.{node.id}", "state": "on"}
+    
+    return {"condition": "template", "value_template": "Check logic syntax"}
 
-if st.button("Generate YAML"):
+def parse_action(node):
+    """Parses Python AST into Home Assistant Action YAML (if-then-else)."""
+    if isinstance(node, ast.If):
+        condition = parse_condition(node.test)
+        then_actions = [parse_action(a) for a in node.body]
+        
+        if node.orelse:
+            # Handle elif as a 'choose' block
+            if isinstance(node.orelse[0], ast.If):
+                return {
+                    "choose": [
+                        {"conditions": [condition], "sequence": then_actions},
+                        parse_action(node.orelse[0])
+                    ]
+                }
+            else:
+                # Handle standard else
+                else_actions = [parse_action(a) for a in node.orelse]
+                return {
+                    "if": [condition],
+                    "then": then_actions,
+                    "else": else_actions
+                }
+        return {"if": [condition], "then": then_actions}
+
+    # Handle Service Calls (e.g., light_on)
+    elif isinstance(node, (ast.Expr, ast.Call)):
+        val = node.value if isinstance(node, ast.Expr) else node
+        name = val.func.id if isinstance(val, ast.Call) else val.id
+        return {"service": name.replace("_", "."), "target": {"entity_id": "TODO"}}
+
+    return {"action": "manual_check"}
+
+# --- STREAMLIT UI ---
+
+st.set_page_config(page_title="HA Logic Compiler", page_icon="🤖")
+st.title("🤖 HA Logic to YAML")
+st.markdown("Write Python-style logic and get Home Assistant YAML instantly.")
+
+with st.sidebar:
+    st.header("Syntax Tips")
+    st.code("hold(temp > 25, '5m')")
+    st.code("if is_home and is_night:\n  light_on")
+    st.info("Check the README for more examples.")
+
+user_code = st.text_area("Enter your logic here:", height=400, value="if hold(temp > 25, '10m'):\n    fan_on\nelse:\n    fan_off")
+
+if st.button("Compile to YAML"):
     try:
-        tree = ast.parse(user_input, mode='eval')
-        result = parse_logic(tree.body)
+        tree = ast.parse(user_code)
+        result = [parse_action(stmt) for stmt in tree.body]
+        st.subheader("Resulting YAML:")
         st.code(yaml.dump(result, sort_keys=False), language="yaml")
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Syntax Error: {e}")
