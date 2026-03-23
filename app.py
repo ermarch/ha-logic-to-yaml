@@ -109,8 +109,30 @@ with st.sidebar:
     st.code("if is_home and is_night:\n  light_on")
     st.info("Check the README for more examples.")
 
-user_code = st.text_area("Enter your logic here:", height=300, value="if hold(temp > 25, '10m'):\n    fan_on\nelse:\n    fan_off")
+# --- EXAMPLE GALLERY ---
+st.subheader("🚀 Quick Start Examples")
+cols = st.columns(3)
 
+# Define the examples
+examples = {
+    "Basic If-Else": "if is_home:\n    light_on\nelse:\n    light_off",
+    "Numeric + Hold": "if hold(temperature > 25, '10m'):\n    ac_on",
+    "Complex Logic": "if (is_home or guest_mode) and is_night:\n    security_arm_home"
+}
+
+# Create buttons in columns
+for i, (name, code) in enumerate(examples.items()):
+    if cols[i % 3].button(name):
+        st.session_state.user_code = code
+
+# --- TEXT AREA ---
+# We link the value to session_state so the buttons can change it
+if 'user_code' not in st.session_state:
+    st.session_state.user_code = "if is_home:\n    light_on"
+
+user_code = st.text_area("Edit your logic:", height=200, key="user_code")
+
+# --- COMPILER BUTTON ---
 if st.button("Compile to YAML", type="primary"):
     try:
         tree = ast.parse(user_code)
