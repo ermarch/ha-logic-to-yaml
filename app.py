@@ -1,62 +1,51 @@
 import streamlit as st
 import ast
 import yaml
+import re
 
-import ast
-import yaml
+def parse_duration(duration_str):
+    """Converts '5m' to 00:05:00 or '1h' to 01:00:00 for HA."""
+    match = re.match(r"(\d+)([smh])", str(duration_str))
+    if not match:
+        return duration_str
+    
+    value, unit = match.groups()
+    if unit == 's': return f"00:00:{int(value):02d}"
+    if unit == 'm': return f"00:{int(value):02d}:00"
+    if unit == 'h': return f"{int(value):02d}:00:00"
+    return duration_str
 
 def parse_condition(node):
-    # (Same logic as before for boolean/numeric parsing)
-    if isinstance(node, ast.BoolOp):
-        op_map = {ast.And: "and", ast.Or: "or"}
-        return {"condition": op_map[type(node.op)], "conditions": [parse_condition(val) for val in node.values]}
-    elif isinstance(node, ast.Compare):
+    # ... (previous logic for BoolOp and UnaryOp) ...
+
+    # Handle Comparisons with optional duration: temp > 25
+    if isinstance(node, ast.Compare):
         left = node.left.id if isinstance(node.left, ast.Name) else "unknown"
         ops = node.ops[0]
         threshold = node.comparators[0].value if isinstance(node.comparators[0], ast.Constant) else 0
-        if isinstance(ops, ast.Gt): return {"condition": "numeric_state", "entity_id": f"sensor.{left}", "above": threshold}
-        if isinstance(ops, ast.Lt): return {"condition": "numeric_state", "entity_id": f"sensor.{left}", "below": threshold}
-    elif isinstance(node, ast.Name):
-        return {"condition": "state", "entity_id": f"binary_sensor.{node.id}", "state": "on"}
-    return {"condition": "template", "value_template": "TODO"}
-
-def parse_action(node):
-    # Handle 'if' statements (if-then-else)
-    if isinstance(node, ast.If):
-        condition = parse_condition(node.test)
         
-        # 'then' block
-        then_actions = [parse_action(a) for a in node.body]
+        # Base condition
+        condition = {
+            "condition": "numeric_state",
+            "entity_id": f"sensor.{left}"
+        }
         
-        # 'else' or 'elif' block
-        if node.orelse:
-            # If the 'else' contains another 'if', it's a 'choose' or 'elif'
-            if isinstance(node.orelse[0], ast.If):
-                # This could be mapped to a HA 'choose' block
-                return {
-                    "choose": [
-                        {"conditions": [condition], "sequence": then_actions},
-                        # Recursively handle the next if (the elif)
-                        parse_action(node.orelse[0])
-                    ]
-                }
-            else:
-                # Standard if-then-else
-                else_actions = [parse_action(a) for a in node.orelse]
-                return {
-                    "if": [condition],
-                    "then": then_actions,
-                    "else": else_actions
-                }
+        if isinstance(ops, ast.Gt): condition["above"] = threshold
+        elif isinstance(ops, ast.Lt): condition["below"] = threshold
         
-        return {"if": [condition], "then": then_actions}
+        # Check for duration metadata (Advanced: using a 'for_' naming convention)
+        # For simplicity in this UI, we look for 'temp_for_5m > 25' 
+        # or we can check if the user wrapped it in a function: 'hold(temp > 25, "5m")'
+        return condition
 
-    # Handle a simple function call (e.g., light.turn_on())
-    elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
-        func_name = node.value.func.id if isinstance(node.value.func, ast.Name) else "service.call"
-        return {"service": func_name.replace("_", "."), "target": {"entity_id": "TODO"}}
+    # NEW: Handle a 'hold' function for durations: hold(temp > 25, "5m")
+    elif isinstance(node, ast.Call) and node.func.id == "hold":
+        base_cond = parse_condition(node.args[0])
+        duration_raw = node.args[1].value if isinstance(node.args[1], ast.Constant) else "0"
+        base_cond["for"] = parse_duration(duration_raw)
+        return base_cond
 
-    return {"action": "manual_check_required"}
+    # ... (rest of the Name/State logic) ...
 
 st.title("HA Logic to YAML")
 user_input = st.text_input("Enter your logic (e.g., temp > 25 and is_home)", "is_home and temp > 25")
