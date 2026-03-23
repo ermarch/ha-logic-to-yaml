@@ -102,13 +102,29 @@ with st.sidebar:
     st.code("if is_home and is_night:\n  light_on")
     st.info("Check the README for more examples.")
 
-user_code = st.text_area("Enter your logic here:", height=400, value="if hold(temp > 25, '10m'):\n    fan_on\nelse:\n    fan_off")
+user_code = st.text_area("Enter your logic here:", height=300, value="if hold(temp > 25, '10m'):\n    fan_on\nelse:\n    fan_off")
 
-if st.button("Compile to YAML"):
+if st.button("Compile to YAML", type="primary"):
     try:
         tree = ast.parse(user_code)
         result = [parse_action(stmt) for stmt in tree.body]
+        yaml_output = yaml.dump(result, sort_keys=False)
+        
         st.subheader("Resulting YAML:")
-        st.code(yaml.dump(result, sort_keys=False), language="yaml")
+        
+        # 1. Display with built-in copy button
+        st.code(yaml_output, language="yaml")
+        
+        # 2. Add a Download Button
+        st.download_button(
+            label="💾 Download automation.yaml",
+            data=yaml_output,
+            file_name="automation.yaml",
+            mime="text/yaml",
+        )
+        
+        st.success("Compilation successful! You can now paste this into your Home Assistant automations.yaml.")
+        
     except Exception as e:
         st.error(f"Syntax Error: {e}")
+        st.info("Check your indentation or function brackets.")
