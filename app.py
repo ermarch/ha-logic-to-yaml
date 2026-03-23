@@ -3,6 +3,13 @@ import yaml
 import re
 import streamlit as st
 
+with st.expander("📖 View Documentation / Instructions"):
+    try:
+        with open("README.md", "r") as f:
+            st.markdown(f.read())
+    except FileNotFoundError:
+        st.error("README.md not found in the repository.")
+
 # --- CORE COMPILER LOGIC ---
 
 def parse_duration(duration_str):
